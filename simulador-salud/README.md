@@ -24,15 +24,21 @@ puede instalar como app (PWA) y usar sin conexión después de la primera visita
 ## Inicio de sesión y portal del administrador
 
 - Para entrar, cada persona inicia sesión con **usuario y contraseña**.
-- La **primera vez** que se abre el simulador se crea la cuenta del **administrador**.
+- Las **cuentas iniciales ya vienen creadas** (`js/cuentas.js`): la primera vez que
+  se abre el simulador se cargan solas y en la pantalla de inicio aparece la lista
+  «Cuentas creadas para ingresar» mientras conserven su contraseña de fábrica.
+- Hay tres roles: **Administrador**, **Docente** y **Estudiante**.
 - El **portal del administrador** (botón 🛠️ Admin) permite:
-  - crear, editar, activar/desactivar y eliminar usuarios;
+  - crear cuentas de **estudiantes y docentes** (y otros administradores), editarlas,
+    activarlas/desactivarlas y eliminarlas;
   - asignar **áreas** (dan acceso a todos los cursos del área) y **cursos individuales**;
-  - **cargar estudiantes por área** pegando una lista (usuario y contraseña se generan solos);
+  - **cargar estudiantes o docentes por área** pegando una lista (usuario y contraseña se generan solos);
   - generar nuevas contraseñas y copiar los datos de acceso para enviarlos;
   - ver el **progreso** de cada estudiante por curso, nota y certificado (copiable a Excel);
   - exportar e importar una **copia de respaldo**.
 - Cada estudiante solo ve los cursos de sus áreas asignadas.
+- Cada docente ve los cursos de sus áreas y un **portal docente** (botón 🛠️ Docente)
+  de solo lectura con sus estudiantes y el progreso de esas áreas.
 - Las contraseñas se guardan cifradas (PBKDF2-SHA256 con sal), nunca en texto plano.
 
 **Dónde se guardan las cuentas:** en la versión publicada en claude.ai, en una base
@@ -91,6 +97,7 @@ js/data.js             Banco de cursos: lecciones, prácticas, escenas 3D y eval
 js/sims2d.js           Motores de práctica 2D
 js/scene3d.js          Visor 3D / Cine / VR / AR / Cardboard (Three.js)
 js/app.js              Navegación, inicio de sesión, progreso, evaluación y certificado
+js/cuentas.js          Cuentas iniciales (contraseñas cifradas) que se cargan solas
 js/store.js            Usuarios y progreso (base compartida o dispositivo) y cifrado de contraseñas
 js/admin.js            Portal del administrador
 vendor/                Three.js r160 (licencia MIT), incluido para funcionar sin conexión
@@ -107,10 +114,12 @@ sus puntos) y `quiz`. No hace falta tocar el resto del código.
 > Simulador con fines educativos. No reemplaza la práctica clínica supervisada
 > ni los protocolos oficiales vigentes de cada institución.
 
-## Cuentas de prueba
+## Cuentas iniciales
 
-`cuentas-prueba.json` contiene cuentas de demostración (importables desde
-Portal → Respaldo). Administrador: `admin.prueba` / `Admin2026`. Estudiantes:
+Se crean automáticamente al abrir el simulador por primera vez (`js/cuentas.js`;
+la misma lista está en `cuentas-prueba.json`, importable desde Portal → Respaldo).
+Administrador: `admin.prueba` / `Admin2026`. Docentes: `docente.<area>` /
+`Docente2026` (una cuenta por área). Estudiantes:
 `<area>.prueba` / `Prueba2026` (enfermeria, emergencias, farmacia, odontologia,
 cirugia, geriatria, laboratorio, bioseguridad, materno, rehabilitacion,
 nutricion), `multi.prueba` (varias áreas) e `inactivo.prueba` (desactivada).
