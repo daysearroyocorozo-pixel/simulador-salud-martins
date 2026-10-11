@@ -8,6 +8,7 @@
 import * as THREE from "../vendor/three.module.min.js";
 import { OrbitControls } from "../vendor/OrbitControls.js";
 import { StereoEffect } from "../vendor/StereoEffect.js";
+import { makeHuman, updateHumans, createWalker } from "./isty-3d.js";
 
 const NAVY = "#223146";
 const SAND = "#c6ae96";
@@ -670,6 +671,84 @@ function scenePlato() {
   };
 }
 
+// ===================================================================
+// Sala clínica alrededor del modelo (paredes visibles solo desde dentro)
+// ===================================================================
+function wallTexture(kind) {
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 512;
+  const x = c.getContext("2d");
+  x.fillStyle = "#eef1f4"; x.fillRect(0, 0, 1024, 512);
+  x.fillStyle = "#c9d3dd"; x.fillRect(0, 440, 1024, 72);
+  x.fillStyle = SAND; x.fillRect(0, 432, 1024, 8);
+  if (kind === "ventana") for (let i = 0; i < 2; i++) {
+    const X = 180 + i * 440; x.fillStyle = "#fff"; x.fillRect(X - 10, 90, 260, 250);
+    const g = x.createLinearGradient(0, 100, 0, 330); g.addColorStop(0, "#9fd3f2"); g.addColorStop(1, "#e3f4ff"); x.fillStyle = g; x.fillRect(X, 100, 240, 230);
+    x.fillStyle = "#6aa84f"; x.beginPath(); x.arc(X + 70, 330, 60, Math.PI, 0); x.arc(X + 170, 330, 50, Math.PI, 0); x.fill();
+    x.fillStyle = "#fff"; x.fillRect(X + 117, 100, 6, 230); x.fillRect(X, 212, 240, 6);
+  }
+  if (kind === "logo") {
+    x.fillStyle = NAVY; x.fillRect(220, 110, 584, 190);
+    x.fillStyle = SAND; x.font = "bold 64px Montserrat, sans-serif"; x.textAlign = "center"; x.fillText("MARTIN´S", 512, 200);
+    x.fillStyle = "#fff"; x.font = "600 26px Montserrat, sans-serif"; x.fillText("CAPACITACIONES · SALA DE PRÁCTICA", 512, 255);
+  }
+  if (kind === "puerta") {
+    x.fillStyle = "#8d9aa8"; x.fillRect(640, 130, 200, 310); x.fillStyle = "#cfd8e2"; x.fillRect(670, 160, 60, 90);
+    x.fillStyle = "#fff"; x.fillRect(120, 150, 320, 200); x.fillStyle = NAVY; x.font = "bold 30px Montserrat, sans-serif"; x.fillText("Lavado de manos", 150, 200);
+    x.fillStyle = "#9fb3c8"; for (let k = 0; k < 4; k++) x.fillRect(150, 230 + k * 28, 240 - k * 30, 12);
+  }
+  if (kind === "estantes") {
+    x.fillStyle = "#d9e2ea"; x.fillRect(120, 120, 780, 300);
+    for (let r = 0; r < 3; r++) { x.fillStyle = "#aab7c4"; x.fillRect(120, 200 + r * 90, 780, 8); for (let k = 0; k < 12; k++) { x.fillStyle = ["#5fb3c0", "#f3f4f6", SAND, "#93c5fd"][(k + r) % 4]; x.fillRect(140 + k * 62, 150 + r * 90, 44, 50); } }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function buildRoom(S) {
+  const room = new THREE.Group();
+  S.root.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(S.root);
+  const floorY = bb.min.y > 0.3 ? 0 : Math.min(0, bb.min.y) - (bb.min.y < -0.05 || S.size.h < 1.2 ? 0.85 : 0);
+  const cx = S.focus.x, cz = S.focus.z, W = 7, D = 7, H = 2.9;
+  const floor = box(W, 0.04, D, std("#d7dde3", { roughness: 0.85 }), V(cx, floorY - 0.02, cz), room);
+  floor.name = "floor";
+  // baldosas
+  const tiles = new THREE.GridHelper(W, 14, 0xb9c3cc, 0xc7d0d8); tiles.position.set(cx, floorY + 0.002, cz); room.add(tiles);
+  const wall = (kind, x, z, ry, w) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, H), new THREE.MeshStandardMaterial({ map: wallTexture(kind), roughness: 0.95 })); m.position.set(x, floorY + H / 2, z); m.rotation.y = ry; room.add(m); };
+  wall("logo", cx, cz - D / 2, 0, W);
+  wall("ventana", cx - W / 2, cz, Math.PI / 2, D);
+  wall("estantes", cx + W / 2, cz, -Math.PI / 2, D);
+  wall("puerta", cx, cz + D / 2, Math.PI, W);
+  // mesa de procedimientos si el modelo queda en el aire
+  if (bb.min.y - floorY > 0.3) {
+    const top = bb.min.y - 0.01;
+    const tw = Math.max(0.9, S.size.w * 0.9), td = Math.max(0.6, S.size.d * 0.9);
+    box(tw, 0.04, td, std("#e5e7eb", { metalness: 0.4, roughness: 0.35 }), V(cx, top - 0.02, cz), room);
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => cyl(0.02, 0.02, top - floorY, std("#9ca3af", { metalness: 0.6 }), V(cx + a * (tw / 2 - 0.05), floorY + (top - floorY) / 2, cz + b * (td / 2 - 0.05)), room, 10));
+  }
+  // monitor de signos vitales y lavamanos
+  const mx = cx - Math.max(1.1, S.size.w / 2 + 0.7);
+  cyl(0.03, 0.03, 1.3, std("#9ca3af", { metalness: 0.6 }), V(mx, floorY + 0.65, cz - 0.4), room, 10);
+  box(0.42, 0.3, 0.06, std("#1f2937"), V(mx, floorY + 1.42, cz - 0.4), room);
+  const scr = document.createElement("canvas"); scr.width = 256; scr.height = 180; const sx = scr.getContext("2d");
+  sx.fillStyle = "#04140c"; sx.fillRect(0, 0, 256, 180); sx.strokeStyle = "#22c55e"; sx.lineWidth = 3; sx.beginPath();
+  for (let i = 0; i <= 256; i += 4) { const k = i % 64; sx.lineTo(i, 60 - (k === 28 ? 40 : k === 32 ? -20 : 0)); } sx.stroke();
+  sx.font = "bold 26px monospace"; sx.fillStyle = "#22c55e"; sx.fillText("FC 78", 12, 130); sx.fillStyle = "#38bdf8"; sx.fillText("SpO2 98%", 120, 130); sx.fillStyle = "#fbbf24"; sx.fillText("PA 120/80", 12, 168);
+  const st = new THREE.CanvasTexture(scr); st.colorSpace = THREE.SRGBColorSpace;
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.26), new THREE.MeshBasicMaterial({ map: st })); sm.position.set(mx, floorY + 1.42, cz - 0.366); room.add(sm);
+  box(0.6, 0.85, 0.45, std("#e5e7eb"), V(cx + W / 2 - 0.35, floorY + 0.425, cz - 1.6), room);
+  box(0.5, 0.06, 0.38, std("#f8fafc", { roughness: 0.2 }), V(cx + W / 2 - 0.35, floorY + 0.88, cz - 1.6), room);
+  // sillas de espera
+  for (let i = 0; i < 3; i++) { box(0.45, 0.05, 0.45, std(NAVY), V(cx - 1.2 + i * 0.6, floorY + 0.45, cz + D / 2 - 0.45), room); box(0.45, 0.45, 0.05, std(NAVY), V(cx - 1.2 + i * 0.6, floorY + 0.7, cz + D / 2 - 0.22), room); }
+  // instructora 3D al lado del modelo
+  const nurse = makeHuman("🧑🏽‍⚕️", { height: 1.65 });
+  const big = S.size.h >= 1.2 || S.focus.y > 0.5;
+  nurse.position.set(cx + Math.max(big ? 0.9 : 1.4, S.size.w / 2 + (big ? 0.6 : 0.9)), floorY, cz - (big ? 0.7 : 1.1));
+  nurse.rotation.y = -Math.PI / 2 - 0.5;
+  room.add(nurse);
+  room.userData.nurse = nurse;
+  room.userData.floorY = floorY;
+  return room;
+}
+
 const BUILDERS = {
   cuerpo: (c) => sceneCuerpo({ baby: c.escena.bebe }),
   ecg: () => Object.assign(sceneCuerpo({ transparentTorso: true, ecg: true }), { focus: V(0.05, 1.22, 0), size: { w: 0.6, h: 0.55, d: 0.3 }, hs: 0.012, ls: 0.03 }),
@@ -735,6 +814,8 @@ export function mount(container, course, opts = {}) {
   const world = new THREE.Group();
   world.add(S.root);
   scene.add(world);
+  const sala = buildRoom(S);
+  scene.add(sala);
 
   // ----- Puntos interactivos -----
   const hotspots = [];
@@ -768,6 +849,14 @@ export function mount(container, course, opts = {}) {
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.target.copy(S.focus);
+  const walker = createWalker({
+    getCamera: () => camera, canvas: renderer.domElement, container, buttonParent: document.createElement("div"),
+    getWorld: () => sala.getObjectByName("floor"), eye: 1.6,
+    targets: () => hotspots.filter((h) => h.g.visible).map((h) => ({ obj: h.g, label: h.d.label, h })),
+    interact: (t) => { if (onHotspot) onHotspot(t.h); },
+    onToggle: (on) => { controls.enabled = !on; tween = null; if (!on) frameHome(true); }
+  });
+  const walkBtn = () => ({ html: "👣 Recorrer", active: walker.active, title: "Caminar por la sala en primera persona", onClick: (b) => { walker.active ? walker.disable() : walker.enable(); b.classList.toggle("active", walker.active); } });
   const camDir = (S.camDir || V(0.35, 0.22, 1)).clone().normalize();
   let homeDist = 2;
   function frameHome(animated) {
@@ -897,6 +986,7 @@ export function mount(container, course, opts = {}) {
     cine = null;
     reto = null;
     onHotspot = null;
+    if (walker.active) walker.disable();
     controls.enabled = true;
   }
 
@@ -922,7 +1012,8 @@ export function mount(container, course, opts = {}) {
       { html: "🎯 Reto 3D", onClick: () => modeReto() },
       { html: "🏷️ Etiquetas", active: labelsOn, onClick: (b) => { setLabels(!labelsOn); b.classList.toggle("active", labelsOn); } },
       { html: "🔄 Girar", active: autoRotate, onClick: (b) => { autoRotate = !autoRotate; b.classList.toggle("active", autoRotate); } },
-      { html: "⟲ Vista", onClick: () => frameHome(true) }
+      { html: "⟲ Vista", onClick: () => frameHome(true) },
+      walkBtn()
     ]);
     ui.append(el("div", "v3d-hint v3d-mode", "☝️ Arrastra para girar · 🤏 pellizca o rueda para zoom · toca los puntos dorados"));
     onHotspot = (h) => {
@@ -930,6 +1021,7 @@ export function mount(container, course, opts = {}) {
       showInfo(h);
       const wp = new THREE.Vector3();
       h.g.getWorldPosition(wp);
+      if (walker.active) return;
       const dir = camera.position.clone().sub(controls.target).normalize();
       tweenTo(wp.clone().add(dir.multiplyScalar(homeDist * 0.55)), wp, 1.1);
     };
@@ -945,7 +1037,8 @@ export function mount(container, course, opts = {}) {
     toolbar([
       { html: "🔍 Explorar", onClick: () => modeExplore() },
       { html: "🎯 Reto 3D", active: true, onClick: () => modeReto() },
-      { html: "⟲ Vista", onClick: () => frameHome(true) }
+      { html: "⟲ Vista", onClick: () => frameHome(true) },
+      walkBtn()
     ]);
     const prompt = el("div", "v3d-prompt v3d-mode", "");
     ui.append(prompt);
@@ -1404,6 +1497,9 @@ export function mount(container, course, opts = {}) {
     const now = performance.now();
     const t = clock.getElapsedTime();
     if (S.animate) S.animate(t, mode);
+    const dt = Math.min(0.1, t - (loop.last ?? t)); loop.last = t;
+    updateHumans(sala, dt);
+    sala.visible = !renderer.xr.isPresenting && !cardboard;
     const pulse = 1 + 0.18 * Math.sin(t * 4);
     hotspots.forEach((h) => h.ring.scale.setScalar(pulse));
 
@@ -1429,6 +1525,7 @@ export function mount(container, course, opts = {}) {
       return;
     }
 
+    if (walker.active) { walker.update(dt); renderer.render(scene, camera); return; }
     if (tween) {
       const k = Math.min(1, (now - tween.start) / tween.dur);
       const e = ease(k);
@@ -1463,6 +1560,7 @@ export function mount(container, course, opts = {}) {
     setMode,
     destroy() {
       alive = false;
+      walker.destroy();
       stopSpeak();
       if (cardboard) exitCardboard();
       const s = renderer.xr.getSession && renderer.xr.getSession();

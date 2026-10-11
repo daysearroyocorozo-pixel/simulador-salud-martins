@@ -606,3 +606,26 @@ textarea { font: inherit; font-size: 0.9rem; width: 100%; padding: 0.7em; border
   .cert, .cert * { visibility: visible; }
   .cert { position: fixed; inset: 0; margin: 0; max-width: none; width: 100vw; height: 100vh; aspect-ratio: auto; box-shadow: none; border-radius: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ================= Capa visual profesional (visual-ui.js) ================= */
+.isty-ic { display: inline-flex; vertical-align: -0.14em; line-height: 1; }
+.isty-ic .isty-icon-svg { width: 1.05em; height: 1.05em; }
+.isty-av { display: inline-flex; vertical-align: -0.22em; line-height: 1; }
+.isty-av .isty-avatar-svg { width: 1.3em; height: 1.3em; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.isty-talking .isty-mouth { animation: istyTalk .22s infinite alternate ease-in-out; }
+@keyframes istyTalk { from { transform: scaleY(.4); } to { transform: scaleY(1.6); } }
+.cc-icon { background: linear-gradient(135deg, var(--brand-navy), var(--brand-navy-2)); color: var(--brand-sand); box-shadow: 0 8px 18px rgba(34,49,70,.25); }
+.cc-icon .isty-icon-svg { width: 28px; height: 28px; }
+.course-icon { color: var(--brand-navy); }
+.course-icon .isty-icon-svg { width: 32px; height: 32px; }
+:root[data-theme="dark"] .course-icon { color: var(--brand-sand); }
+.icon-btn .isty-icon-svg { width: 20px; height: 20px; }
+.tabs button .isty-ic { margin-right: .2em; }
+.tabs button[aria-selected="true"] .isty-ic, .tabs button.active .isty-ic { color: var(--brand-sand); }
+.mode-chip .isty-ic { color: var(--brand-navy-2); margin-right: .15em; }
+.course-card { transition: transform .18s ease, box-shadow .18s ease, border-color .18s; }
+.view.isty-enter { animation: istyEnter .35s ease both; }
+@keyframes istyEnter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .view.isty-enter, .isty-talking .isty-mouth { animation: none !important; } }
+:root[data-motion="reduce"] .view.isty-enter { animation: none !important; }
+.isty-walk-on .v3d-hint { display: none; }
