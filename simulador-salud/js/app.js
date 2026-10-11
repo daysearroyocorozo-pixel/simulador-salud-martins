@@ -49,6 +49,8 @@
     }
   }
   const isAdmin = () => !!session && session.rol === "admin";
+  const isDocente = () => !!session && session.rol === "docente";
+  const ROL_LABEL = { admin: "Administrador", docente: "Docente", estudiante: "Estudiante" };
   function allowed(c) {
     if (!session) return false;
     if (isAdmin()) return true;
@@ -146,6 +148,8 @@
     const mine = myCourses();
     $("#hero-access").textContent = isAdmin()
       ? "Eres administrador: tienes acceso a todos los cursos y al portal de usuarios."
+      : isDocente()
+      ? `Eres docente de ${(session.areas || []).join(", ") || "—"}: tienes ${mine.length} curso(s) y el portal docente para seguir a tus estudiantes.`
       : `Tienes acceso a ${mine.length} curso(s)${(session.areas || []).length ? ` de: ${session.areas.join(", ")}` : ""}.`;
 
     const started = mine.filter((c) => courseProgress(c) > 0).length;
@@ -566,7 +570,7 @@
       teardown();
       current = null;
       currentTab = null;
-      if (!isAdmin()) { location.hash = "#/"; return; }
+      if (!isAdmin() && !isDocente()) { location.hash = "#/"; return; }
       showView("admin");
       window.scrollTo(0, 0);
       AdminPortal.render($("#view-admin"), {
@@ -602,7 +606,7 @@
   function openSettings() {
     document.querySelector(".acct").hidden = !session;
     $("#reset").hidden = !session;
-    $("#acct-info").innerHTML = session ? `<strong>${esc(session.nombre)}</strong><small>@${esc(session.usuario)} · ${isAdmin() ? "Administrador" : "Estudiante"}</small>` : "";
+    $("#acct-info").innerHTML = session ? `<strong>${esc(session.nombre)}</strong><small>@${esc(session.usuario)} · ${ROL_LABEL[session.rol] || "Estudiante"}</small>` : "";
     $("#set-rate").value = state.voz;
     $("#set-sfx").checked = state.sfx;
     $("#set-motion").checked = state.reduceMotion;
@@ -675,7 +679,9 @@
   function updateHeader() {
     const on = !!session;
     $("#user-btn").hidden = !on;
-    $("#admin-btn").hidden = !isAdmin();
+    $("#admin-btn").hidden = !isAdmin() && !isDocente();
+    $("#admin-label").textContent = isDocente() ? "Docente" : "Admin";
+    $("#admin-btn").title = isDocente() ? "Portal docente" : "Portal del administrador";
     $("#points").hidden = !on;
     if (on) $("#user-name").textContent = session.nombre.split(" ")[0];
   }
@@ -709,9 +715,15 @@
     const fb = $("#login-fb");
     fb.textContent = "";
     fb.className = "sim-feedback";
-    let count = 0;
-    try { count = (await Store.listUsers()).length; } catch (e) { fb.className = "sim-feedback bad"; fb.textContent = "No se pudo conectar con la base de usuarios. Recarga la página."; }
-    setupMode = count === 0;
+    let users = [];
+    try {
+      users = await Store.listUsers();
+      if (await Store.seedInitial(SEED)) users = await Store.listUsers();
+    } catch (e) {
+      if (!users.length) { fb.className = "sim-feedback bad"; fb.textContent = "No se pudo conectar con la base de usuarios. Recarga la página."; }
+    }
+    setupMode = users.length === 0;
+    renderDemoAccounts(users);
     box.classList.toggle("setup", setupMode);
     $("#login-title").textContent = setupMode ? "Configura el administrador" : "Iniciar sesión";
     $("#login-sub").textContent = setupMode
@@ -730,6 +742,29 @@
       ? "🌐 Cuentas en línea: entra desde cualquier dispositivo."
       : "📱 Cuentas guardadas en este dispositivo.";
   }
+
+  // Muestra las cuentas iniciales mientras conserven su contraseña de fábrica.
+  const SEED = typeof CUENTAS_INICIALES !== "undefined" ? CUENTAS_INICIALES : null;
+  const DEMO_PASS = { admin: "Admin2026", docente: "Docente2026", estudiante: "Prueba2026" };
+  function renderDemoAccounts(users) {
+    const box = $("#demo-accts");
+    const seed = (SEED && SEED.usuarios) || [];
+    const live = seed.filter((s) => users.some((u) => u.usuario === s.usuario && u.hash === s.hash && u.activo !== false));
+    box.hidden = !live.length;
+    if (!live.length) return;
+    const groups = [["admin", "Administrador"], ["docente", "Docentes"], ["estudiante", "Estudiantes"]];
+    box.querySelector(".demo-list").innerHTML = groups.map(([rol, t]) => {
+      const list = live.filter((u) => (u.rol || "estudiante") === rol);
+      return list.length ? `<h4>${t}</h4>${list.map((u) => `<button type="button" class="demo-acct" data-u="${esc(u.usuario)}" data-p="${DEMO_PASS[rol]}"><span>${esc(u.nombre)}</span><code>${esc(u.usuario)}</code></button>`).join("")}` : "";
+    }).join("");
+  }
+  $("#demo-accts").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-u]");
+    if (!b) return;
+    $("#login-user").value = b.dataset.u;
+    $("#login-pass").value = b.dataset.p;
+    $("#login-submit").focus();
+  });
 
   $("#login-form").addEventListener("submit", async (e) => {
     e.preventDefault();

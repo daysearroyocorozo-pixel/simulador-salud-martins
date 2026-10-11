@@ -487,6 +487,13 @@ hr { border: none; border-top: 1px solid var(--border); width: 100%; }
 .login-box { display: flex; flex-direction: column; gap: 6px; border-top: 6px solid var(--brand-sand); }
 .login-box form { display: flex; flex-direction: column; gap: 12px; }
 .login-box.setup { border-top-color: var(--brand-navy); }
+.demo-accts { margin-top: 10px; border-top: 1px solid var(--surface-2); padding-top: 10px; }
+.demo-accts summary { cursor: pointer; font-weight: 700; }
+.demo-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.demo-list h4 { margin: 8px 0 2px; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.demo-acct { display: flex; justify-content: space-between; gap: 8px; align-items: center; width: 100%; text-align: left; font: inherit; font-size: 0.85rem; padding: 6px 8px; border: 1px solid var(--surface-2); border-radius: 10px; background: transparent; color: var(--text); cursor: pointer; }
+.demo-acct:hover, .demo-acct:focus-visible { background: var(--surface-2); }
+.demo-acct code { font-size: 0.8rem; }
 .pw-row { display: flex; gap: 6px; align-items: center; }
 .pw-row input { flex: 1; min-width: 0; }
 .small { font-size: 0.82rem; }
@@ -524,6 +531,7 @@ textarea { font: inherit; font-size: 0.9rem; width: 100%; padding: 0.7em; border
 .cred-grid code, .adm-table code { font-size: 1rem; font-weight: 700; background: var(--surface); padding: 1px 6px; border-radius: 6px; }
 .pill { font-size: 0.72rem; font-weight: 800; padding: 0.2em 0.6em; border-radius: 99px; background: var(--surface-2); color: var(--text); white-space: nowrap; }
 .pill-admin { background: var(--brand-navy); color: #fff; }
+.pill-docente { background: var(--brand-sand); color: #223146; }
 :root[data-theme="dark"] .pill-admin { background: var(--brand-sand); color: #223146; }
 .pill-off { background: var(--bad-bg); color: var(--bad); }
 .pill-ok { background: var(--ok-bg); color: var(--ok); }

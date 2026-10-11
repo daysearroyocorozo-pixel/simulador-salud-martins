@@ -25,7 +25,7 @@
   </a>
   <div class="header-actions">
     <span class="points" id="points" title="Puntos de experiencia" hidden>⭐ 0</span>
-    <button class="icon-btn" id="admin-btn" hidden title="Portal del administrador">🛠️<span class="btn-label">Admin</span></button>
+    <button class="icon-btn" id="admin-btn" hidden title="Portal del administrador">🛠️<span class="btn-label" id="admin-label">Admin</span></button>
     <button class="icon-btn" id="user-btn" hidden title="Mi cuenta">👤<span class="btn-label" id="user-name"></span></button>
     <button class="icon-btn" id="install-btn" hidden title="Instalar en el dispositivo">📲<span class="btn-label">Instalar</span></button>
     <button class="icon-btn" id="theme-btn" title="Cambiar tema" aria-label="Cambiar tema claro/oscuro">🌓</button>
@@ -67,6 +67,11 @@
           <button class="btn btn-primary btn-large" id="login-submit" type="submit">Ingresar</button>
           <p class="muted small" id="login-mode"></p>
         </form>
+        <details class="demo-accts" id="demo-accts" hidden>
+          <summary>🔑 Cuentas creadas para ingresar</summary>
+          <p class="muted small">Toca una cuenta para completar el usuario y la contraseña. El administrador debe cambiar estas contraseñas antes del uso real.</p>
+          <div class="demo-list"></div>
+        </details>
       </div>
     </div>
   </section>
@@ -179,6 +184,7 @@
 
 <script src="js/data.js"></script>
 <script src="js/store.js"></script>
+<script src="js/cuentas.js"></script>
 <script src="js/sims2d.js"></script>
 <script src="js/admin.js"></script>
 <script src="js/app.js"></script>

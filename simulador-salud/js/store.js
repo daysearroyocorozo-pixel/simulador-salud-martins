@@ -10,6 +10,7 @@ const Store = (function () {
   "use strict";
 
   const LOCAL_KEY = "martins_salud_db_v1";
+  const SEED_KEY = "martins_salud_semilla_v1";
   let mode = "local";
   let db = null;
   let userCap = null;
@@ -148,6 +149,34 @@ const Store = (function () {
       }
       for (const p of d.progreso || []) {
         if (p && api.validUsername(p.usuario) && p.progreso) await api.saveProgress(p.usuario, p.progreso);
+      }
+      return n;
+    },
+
+    // Crea las cuentas iniciales (js/cuentas.js) que todavía no existan.
+    // Se hace una sola vez por instalación: si luego el administrador elimina
+    // una de esas cuentas, no vuelve a aparecer.
+    async seedInitial(data) {
+      if (!data || !Array.isArray(data.usuarios)) return 0;
+      if (mode === "local") {
+        try { if (localStorage.getItem(SEED_KEY)) return 0; } catch (e) { return 0; }
+      } else {
+        const s = await retry(() => db.doc("config/semilla").get());
+        if (s.exists) return 0;
+      }
+      let n = 0;
+      for (const u of data.usuarios) {
+        if (!u || !api.validUsername(u.usuario) || !u.hash || !u.salt) continue;
+        if (await api.getUser(u.usuario)) continue;
+        await api.saveUser(u);
+        const p = (data.progreso || []).find((x) => x && x.usuario === u.usuario);
+        if (p && p.progreso) await api.saveProgress(u.usuario, p.progreso);
+        n++;
+      }
+      if (mode === "local") {
+        try { localStorage.setItem(SEED_KEY, new Date().toISOString()); } catch (e) { /* nada */ }
+      } else {
+        await retry(() => db.doc("config/semilla").set({ fecha: new Date().toISOString(), cuentas: n }));
       }
       return n;
     },

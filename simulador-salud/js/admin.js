@@ -1,6 +1,8 @@
-/* Martin´s Capacitaciones · Portal del administrador.
-   Crear, editar y desactivar usuarios, asignarles áreas y cursos,
-   carga masiva por área, seguimiento del progreso y respaldo. */
+/* Martin´s Capacitaciones · Portal del administrador y portal docente.
+   El administrador crea, edita y desactiva estudiantes, docentes y
+   administradores, les asigna áreas y cursos, hace cargas masivas por área,
+   sigue el progreso y saca respaldos. El docente ve (solo lectura) a los
+   estudiantes y el progreso de sus áreas. */
 
 const AdminPortal = (function () {
   "use strict";
@@ -17,15 +19,28 @@ const AdminPortal = (function () {
   let canManage = true;
   let filtroArea = "Todas";
   let filtroTxt = "";
+  let teacher = null; // docente que abrió el portal (null = administrador)
 
-  function areas() { return CATEGORIAS.filter((a) => COURSES.some((c) => c.cat === a)); }
+  const ROL_LABEL = { admin: "Administrador", docente: "Docente", estudiante: "Estudiante" };
+  const ROL_PILL = { admin: "pill-admin", docente: "pill-docente", estudiante: "" };
+  const rolOf = (u) => (ROL_LABEL[u.rol] ? u.rol : "estudiante");
+  const isStudent = (u) => rolOf(u) === "estudiante";
+
+  function areas() {
+    const all = CATEGORIAS.filter((a) => COURSES.some((c) => c.cat === a));
+    return teacher ? all.filter((a) => (teacher.areas || []).includes(a)) : all;
+  }
   function coursesOf(u) {
     if (u.rol === "admin") return COURSES.slice();
     return COURSES.filter((c) => (u.areas || []).includes(c.cat) || (u.cursos || []).includes(c.id));
   }
+  // ¿El usuario tiene algún curso del área?
+  const inArea = (u, a) => (u.areas || []).includes(a) || coursesOf(u).some((c) => c.cat === a);
 
   async function load() {
-    const [us, ps] = await Promise.all([Store.listUsers(), Store.listProgress()]);
+    let [us, ps] = await Promise.all([Store.listUsers(), Store.listProgress()]);
+    // El docente solo ve a los estudiantes de sus áreas.
+    if (teacher) us = us.filter((u) => isStudent(u) && areas().some((a) => inArea(u, a)));
     users = us.sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
     progress = {};
     ps.forEach((p) => { progress[p.usuario] = p.progreso || {}; });
@@ -63,7 +78,9 @@ const AdminPortal = (function () {
     ctx = context;
     root = container;
     root.innerHTML = `<div class="viewer-loading" style="position:relative;min-height:200px"><div><div class="spinner"></div>Cargando portal…</div></div>`;
-    canManage = await Store.canManage();
+    teacher = context.currentUser().rol === "docente" ? context.currentUser() : null;
+    if (teacher && tab !== "progreso") tab = "usuarios";
+    canManage = !teacher && (await Store.canManage());
     try { await load(); } catch (e) { root.innerHTML = `<div class="card">⚠️ No se pudieron leer los usuarios: ${esc(e.message || e.code)}</div>`; return; }
     shell();
   }
@@ -73,16 +90,20 @@ const AdminPortal = (function () {
     root.innerHTML = `
       <div class="admin-head">
         <div>
-          <p class="eyebrow">Portal del administrador</p>
-          <h1>Usuarios y cursos</h1>
-          <p class="muted">${local
+          <p class="eyebrow">${teacher ? "Portal docente" : "Portal del administrador"}</p>
+          <h1>${teacher ? "Mis estudiantes" : "Usuarios y cursos"}</h1>
+          <p class="muted">${teacher
+            ? `Estudiantes y progreso de tus áreas: ${esc((teacher.areas || []).join(", ") || "sin áreas asignadas")}. Las cuentas las crea el administrador.`
+            : local
             ? "Modo dispositivo: los usuarios se guardan en este navegador. Para usarlos en otro equipo, usa «Respaldo» para exportarlos e importarlos."
             : "Modo en línea: los usuarios que crees pueden iniciar sesión desde cualquier celular o computadora con el enlace del simulador."}</p>
-          ${canManage ? "" : '<p class="admin-warn">Solo lectura: necesitas ser propietario o editor de la página para crear o modificar usuarios.</p>'}
+          ${canManage || teacher ? "" : '<p class="admin-warn">Solo lectura: necesitas ser propietario o editor de la página para crear o modificar usuarios.</p>'}
         </div>
       </div>
       <nav class="tabs admin-tabs" role="tablist">
-        ${[["usuarios", "👥 Usuarios"], ["nuevo", "➕ Crear usuario"], ["masivo", "📋 Carga por área"], ["progreso", "📊 Progreso"], ["respaldo", "💾 Respaldo"]]
+        ${(teacher
+          ? [["usuarios", "👥 Mis estudiantes"], ["progreso", "📊 Progreso"]]
+          : [["usuarios", "👥 Usuarios"], ["nuevo", "➕ Crear usuario"], ["masivo", "📋 Carga por área"], ["progreso", "📊 Progreso"], ["respaldo", "💾 Respaldo"]])
           .map(([k, t]) => `<button role="tab" data-at="${k}" aria-selected="${tab === k}">${t}</button>`).join("")}
       </nav>
       <div class="admin-panel"></div>`;
@@ -118,13 +139,16 @@ const AdminPortal = (function () {
   }
 
   function tabUsuarios(p) {
-    const students = users.filter((u) => u.rol !== "admin");
-    const perArea = areas().map((a) => [a, students.filter((u) => (u.areas || []).includes(a) || coursesOf(u).some((c) => c.cat === a)).length]);
+    const students = users.filter(isStudent);
+    const docentes = users.filter((u) => rolOf(u) === "docente");
+    const perArea = areas().map((a) => [a, users.filter((u) => rolOf(u) !== "admin" && inArea(u, a)).length]);
+    if (filtroArea !== "Todas" && !areas().includes(filtroArea)) filtroArea = "Todas";
     p.innerHTML = `
       <div class="admin-stats">
         <div class="stat"><span class="ico">👥</span><div><b>${students.length}</b><small>Estudiantes</small></div></div>
         <div class="stat"><span class="ico">✅</span><div><b>${students.filter((u) => u.activo !== false).length}</b><small>Activos</small></div></div>
-        <div class="stat"><span class="ico">🛠️</span><div><b>${users.length - students.length}</b><small>Administradores</small></div></div>
+        ${teacher ? "" : `<div class="stat"><span class="ico">🧑‍🏫</span><div><b>${docentes.length}</b><small>Docentes</small></div></div>
+        <div class="stat"><span class="ico">🛠️</span><div><b>${users.length - students.length - docentes.length}</b><small>Administradores</small></div></div>`}
         <div class="stat"><span class="ico">🎓</span><div><b>${students.reduce((a, u) => a + Object.values(progress[u.usuario] || {}).filter((x) => x && x.cert).length, 0)}</b><small>Certificados</small></div></div>
       </div>
       <div class="catalog-head">
@@ -136,12 +160,12 @@ const AdminPortal = (function () {
         return `<button class="cat-chip${a === filtroArea ? " active" : ""}" data-area="${esc(a)}">${esc(a)} <small>(${n})</small></button>`;
       }).join("")}</div>
       <div class="user-list"></div>
-      ${canManage ? '<div class="result-actions"><button class="btn btn-primary" data-new>➕ Crear usuario</button></div>' : ""}`;
+      ${canManage ? '<div class="result-actions"><button class="btn btn-primary" data-new>➕ Crear estudiante o docente</button></div>' : ""}`;
     const list = p.querySelector(".user-list");
     const draw = () => {
       const q = norm(filtroTxt.trim());
       const rows = users.filter((u) => {
-        if (filtroArea !== "Todas" && !(u.rol === "admin" || (u.areas || []).includes(filtroArea) || coursesOf(u).some((c) => c.cat === filtroArea))) return false;
+        if (filtroArea !== "Todas" && !(u.rol === "admin" || inArea(u, filtroArea))) return false;
         return !q || norm(`${u.nombre} ${u.usuario} ${u.documento || ""}`).includes(q);
       });
       list.innerHTML = rows.length ? "" : '<p class="empty">No hay usuarios con ese filtro.</p>';
@@ -154,7 +178,7 @@ const AdminPortal = (function () {
           <div class="uc-main">
             <div class="uc-avatar" aria-hidden="true">${esc((u.nombre || u.usuario).trim()[0] || "?").toUpperCase()}</div>
             <div class="uc-id"><strong>${esc(u.nombre)}</strong><small>@${esc(u.usuario)}${u.documento ? ` · C.I. ${esc(u.documento)}` : ""}</small></div>
-            <span class="pill ${u.rol === "admin" ? "pill-admin" : ""}">${u.rol === "admin" ? "Administrador" : "Estudiante"}</span>
+            <span class="pill ${ROL_PILL[rolOf(u)]}">${ROL_LABEL[rolOf(u)]}</span>
             ${u.activo === false ? '<span class="pill pill-off">Inactivo</span>' : ""}
           </div>
           ${u.rol === "admin" ? '<p class="uc-areas muted">Acceso a todos los cursos y al portal.</p>' : `
@@ -220,7 +244,7 @@ const AdminPortal = (function () {
   }
 
   function credText(u, pw) {
-    return `Martin´s Capacitaciones · Simulador de Salud\nNombre: ${u.nombre}\nUsuario: ${u.usuario}\nContraseña: ${pw}\nCursos: ${coursesOf(u).map((c) => c.nombre).join(", ") || "—"}\nEnlace: ${ctx.appLink()}`;
+    return `Martin´s Capacitaciones · Simulador de Salud\nNombre: ${u.nombre}\nRol: ${ROL_LABEL[rolOf(u)]}\nUsuario: ${u.usuario}\nContraseña: ${pw}\nCursos: ${coursesOf(u).map((c) => c.nombre).join(", ") || "—"}\nEnlace: ${ctx.appLink()}`;
   }
 
   function showCred(box, u, pw) {
@@ -239,7 +263,7 @@ const AdminPortal = (function () {
     const editing = !!editUser;
     p.innerHTML = `
       <form class="card admin-form" novalidate>
-        <h2>${editing ? `Editar a ${esc(u.nombre)}` : "Crear usuario"}</h2>
+        <h2>${editing ? `Editar a ${esc(u.nombre)}` : "Crear cuenta de estudiante o docente"}</h2>
         <div class="form-grid">
           <label class="field">Nombre completo *<input id="f-nombre" type="text" maxlength="80" required value="${esc(u.nombre || "")}" autocomplete="off" /></label>
           <label class="field">Cédula / documento<input id="f-doc" type="text" maxlength="20" value="${esc(u.documento || "")}" autocomplete="off" /></label>
@@ -248,7 +272,8 @@ const AdminPortal = (function () {
           <label class="field">Contraseña ${editing ? "(vacío = no cambiar)" : "*"}
             <span class="pw-row"><input id="f-pass" type="text" maxlength="60" autocomplete="new-password" ${editing ? "" : `value="${Store.generatePassword()}"`} /><button type="button" class="btn btn-secondary btn-sm" data-gen>🎲 Generar</button></span></label>
           <label class="field">Rol
-            <select id="f-rol"><option value="estudiante"${u.rol !== "admin" ? " selected" : ""}>Estudiante</option><option value="admin"${u.rol === "admin" ? " selected" : ""}>Administrador</option></select></label>
+            <select id="f-rol">${["estudiante", "docente", "admin"].map((r) => `<option value="${r}"${rolOf(u) === r ? " selected" : ""}>${ROL_LABEL[r]}</option>`).join("")}</select>
+            <small class="muted" id="f-rol-help"></small></label>
           <label class="switch-row field-inline"><span>Cuenta activa</span><input id="f-activo" type="checkbox" ${u.activo !== false ? "checked" : ""} /></label>
         </div>
         <fieldset class="field assign" ${u.rol === "admin" ? "disabled" : ""}>
@@ -283,7 +308,18 @@ const AdminPortal = (function () {
     };
     drawCourses();
     f.querySelectorAll('[name="area"]').forEach((x) => { x.onchange = drawCourses; });
-    f.querySelector("#f-rol").onchange = (e) => { f.querySelector(".assign").disabled = e.target.value === "admin"; };
+    const ROL_HELP = {
+      estudiante: "Realiza los cursos de sus áreas.",
+      docente: "Ve los cursos de sus áreas y el progreso de los estudiantes de esas áreas.",
+      admin: "Acceso a todos los cursos y a este portal."
+    };
+    const onRol = () => {
+      const r = f.querySelector("#f-rol").value;
+      f.querySelector(".assign").disabled = r === "admin";
+      f.querySelector("#f-rol-help").textContent = ROL_HELP[r];
+    };
+    f.querySelector("#f-rol").onchange = onRol;
+    onRol();
     f.querySelector("[data-gen]").onclick = () => { f.querySelector("#f-pass").value = Store.generatePassword(); };
     f.querySelector("[data-cancel]").onclick = () => goTab("usuarios");
     const nameInput = f.querySelector("#f-nombre");
@@ -327,7 +363,7 @@ const AdminPortal = (function () {
         if (editing) Object.assign(u, obj); else users.push(obj);
         users.sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
         fb.className = "sim-feedback ok";
-        fb.textContent = editing ? "Cambios guardados." : `Usuario @${usuario} creado con ${coursesOf(obj).length} curso(s).`;
+        fb.textContent = editing ? "Cambios guardados." : `${ROL_LABEL[rol]} @${usuario} creado con ${coursesOf(obj).length} curso(s).`;
         if (pw) showCred(f.querySelector(".uc-cred"), obj, pw);
         if (!editing) {
           f.querySelector('[type="submit"]').hidden = true;
@@ -353,23 +389,32 @@ const AdminPortal = (function () {
     if (!canManage) { p.innerHTML = '<div class="card">Necesitas permisos de propietario o editor para crear usuarios.</div>'; return; }
     p.innerHTML = `
       <div class="card">
-        <h2>Carga de estudiantes por área</h2>
-        <p class="muted">Elige el área (o áreas) y pega la lista de estudiantes, uno por línea, con el formato:<br>
+        <h2>Carga de estudiantes o docentes por área</h2>
+        <fieldset class="field"><legend>Tipo de cuenta</legend>
+          <div class="seg" id="m-rol"><button type="button" class="active" data-v="estudiante">🎓 Estudiantes</button><button type="button" data-v="docente">🧑‍🏫 Docentes</button></div></fieldset>
+        <p class="muted">Elige el área (o áreas) y pega la lista, una persona por línea, con el formato:<br>
         <code>Nombre completo; cédula; usuario; contraseña</code><br>Solo el nombre es obligatorio: el usuario y la contraseña se generan solos si los dejas vacíos.</p>
         <fieldset class="field"><legend>Áreas</legend><div class="area-grid">${areas().map((a) => `<label class="area-opt"><input type="checkbox" name="marea" value="${esc(a)}" /><span>${esc(a)}<small>${COURSES.filter((c) => c.cat === a).length} cursos</small></span></label>`).join("")}</div></fieldset>
-        <label class="field">Lista de estudiantes
+        <label class="field">Lista de personas
           <textarea id="m-list" rows="8" placeholder="María Pérez; 0102030405&#10;Juan Torres; 0912345678; jtorres; clave123"></textarea></label>
         <p class="sim-feedback" role="status" aria-live="polite"></p>
         <button class="btn btn-primary" data-go>✅ Crear usuarios</button>
         <div class="bulk-out"></div>
       </div>`;
     const fb = p.querySelector(".sim-feedback");
+    let mrol = "estudiante";
+    p.querySelector("#m-rol").onclick = (e) => {
+      const b = e.target.closest("[data-v]");
+      if (!b) return;
+      mrol = b.dataset.v;
+      p.querySelectorAll("#m-rol [data-v]").forEach((x) => x.classList.toggle("active", x === b));
+    };
     p.querySelector("[data-go]").onclick = async (e) => {
       const btn = e.currentTarget;
       const selAreas = [...p.querySelectorAll('[name="marea"]:checked')].map((x) => x.value);
       const lines = p.querySelector("#m-list").value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       if (!selAreas.length) { fb.className = "sim-feedback bad"; fb.textContent = "Elige al menos un área."; return; }
-      if (!lines.length) { fb.className = "sim-feedback bad"; fb.textContent = "Pega al menos un estudiante."; return; }
+      if (!lines.length) { fb.className = "sim-feedback bad"; fb.textContent = "Pega al menos una persona."; return; }
       btn.disabled = true;
       const created = [];
       const errors = [];
@@ -383,7 +428,7 @@ const AdminPortal = (function () {
         if (users.some((x) => x.usuario === usuario)) { errors.push(`Línea ${i + 1}: el usuario «${usuario}» ya existe.`); continue; }
         const pw = pass.length >= 6 ? pass : Store.generatePassword();
         const now = new Date().toISOString();
-        const obj = { usuario, nombre, documento, rol: "estudiante", areas: selAreas, cursos: [], activo: true, creado: now, actualizado: now, ...(await Store.hashPassword(pw)) };
+        const obj = { usuario, nombre, documento, rol: mrol, areas: selAreas, cursos: [], activo: true, creado: now, actualizado: now, ...(await Store.hashPassword(pw)) };
         try {
           await Store.saveUser(obj);
           users.push(obj);
@@ -396,7 +441,7 @@ const AdminPortal = (function () {
       btn.disabled = false;
       users.sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
       fb.className = `sim-feedback ${created.length ? "ok" : "bad"}`;
-      fb.textContent = `${created.length} usuario(s) creados${errors.length ? `, ${errors.length} con problemas` : ""}.`;
+      fb.textContent = `${created.length} ${mrol === "docente" ? "docente(s)" : "estudiante(s)"} creado(s)${errors.length ? `, ${errors.length} con problemas` : ""}.`;
       const out = p.querySelector(".bulk-out");
       const csv = ["Nombre;Cédula;Usuario;Contraseña", ...created.map(({ obj, pw }) => `${obj.nombre};${obj.documento};${obj.usuario};${pw}`)].join("\n");
       out.innerHTML = `${errors.length ? `<ul class="bulk-errors">${errors.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
@@ -412,7 +457,8 @@ const AdminPortal = (function () {
 
   // ----- Progreso -----
   function tabProgreso(p) {
-    const students = users.filter((u) => u.rol !== "admin");
+    const students = users.filter(isStudent);
+    if (filtroArea !== "Todas" && !areas().includes(filtroArea)) filtroArea = "Todas";
     p.innerHTML = `
       <div class="catalog-head"><h2>Progreso de los estudiantes</h2>
         <button class="btn btn-secondary btn-sm" data-refresh>🔄 Actualizar</button></div>
@@ -426,7 +472,7 @@ const AdminPortal = (function () {
       rows = [];
       students.forEach((u) => {
         const pr = progress[u.usuario] || {};
-        coursesOf(u).filter((c) => filtroArea === "Todas" || c.cat === filtroArea).forEach((c) => {
+        coursesOf(u).filter((c) => (filtroArea === "Todas" ? areas().includes(c.cat) : c.cat === filtroArea)).forEach((c) => {
           const cp = pr[c.id] || {};
           rows.push({ u, c, pct: ctx.courseProgress(c, pr), quiz: cp.quiz || 0, cert: cp.cert });
         });
